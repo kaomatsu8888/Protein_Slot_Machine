@@ -78,6 +78,30 @@
   const SPIN_MS_REDUCED = 300;
   const CONFETTI_COLORS = ['#ff4f81', '#ffc531', '#2fc6a5', '#4aa8ff', '#a66bff'];
 
+  /**
+   * 結果画面の見出し。
+   *
+   * 【意図】条件を満たせば基本的に毎回成功するため、「当たり/ハズレ」のニュアンスは実態と合わない。
+   *         トレーニー構文の煽り文句をランダムに出すことで、「抽選結果」を淡々と伝えるのではなく
+   *         ガチャらしいドーパミンを出す
+   */
+  const RESULT_HYPE_LINES = [
+    '💪 筋肉が切れてるよ！',
+    '🔥 腹斜筋、素敵！',
+    '🥶 人間冷蔵庫、爆誕！',
+    '🧊 プロテイン、常温で飲める説！',
+    '🍗 今日も鶏むねに救われた',
+    '🦾 脳までバキバキに仕上がった',
+    '🥩 肉、足りてる？もう足りてる！',
+    '📈 PFCバランス、殿堂入り！',
+    '🛒 コンビニ、俺のジム飯基地',
+    '⚡ ちぎれる寸前のセット、見っけ！',
+  ];
+
+  function pickHypeLine() {
+    return RESULT_HYPE_LINES[Math.floor(Math.random() * RESULT_HYPE_LINES.length)];
+  }
+
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   const el = {
@@ -97,6 +121,7 @@
     message: document.getElementById('message'),
     loadError: document.getElementById('load-error'),
     result: document.getElementById('result'),
+    resultTitle: document.getElementById('result-title'),
     resultList: document.getElementById('result-list'),
     totalProtein: document.getElementById('total-protein'),
     totalPrice: document.getElementById('total-price'),
@@ -533,6 +558,7 @@
     const totalPrice = items.reduce((sum, item) => sum + item.product.price, 0);
     const totalProtein10 = items.reduce((sum, item) => sum + item.protein10, 0);
 
+    el.resultTitle.textContent = pickHypeLine();
     el.resultList.replaceChildren(...groups.map(createCard));
     el.overTarget.textContent = `目標 ${formatGram(target10 / 10)}g 達成！（+${formatGram((totalProtein10 - target10) / 10)}g）`;
     el.budgetLeft.textContent = `予算残り ${formatYen(budget - totalPrice)}円`;
