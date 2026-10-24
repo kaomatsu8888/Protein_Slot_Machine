@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="予算内で目標たんぱく質量を達成するコンビニ商品セットをランダムに提案するガチャ">
+  <title>コンビニたんぱく質ガチャ</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <header class="hero">
+    <p class="hero__badge">PROTEIN GACHA</p>
+    <h1 class="hero__title">コンビニ<br class="sp-only">たんぱく質ガチャ</h1>
+    <p class="hero__lead">予算内で目標たんぱく質を達成するセットを引き当てよう！</p>
+  </header>
+
+  <main class="container">
+    <p id="load-error" class="alert alert--error" role="alert" hidden></p>
+
+    <!--
+      【意図】視線が上から下へ一直線に流れるよう、
+              ①コース → ②目標量 → ③予算 → 重複OK → ガチャボタン の順に縦一列で並べる
+    -->
+    <form id="gacha-form" class="panel" novalidate>
+      <fieldset class="step">
+        <legend class="step__title">
+          <span class="step__num">1</span>コースから目標を決める
+          <span class="tag tag--optional">任意</span>
+        </legend>
+
+        <div class="course-list">
+          <label class="course">
+            <input type="radio" name="course" value="bulk">
+            <span class="course__body">
+              <span class="course__icon" aria-hidden="true">💪</span>
+              <span class="course__name">肉体改造</span>
+              <span class="course__rate">体重×2.0g/日</span>
+            </span>
+          </label>
+          <label class="course">
+            <input type="radio" name="course" value="health">
+            <span class="course__body">
+              <span class="course__icon" aria-hidden="true">🌿</span>
+              <span class="course__name">健康維持</span>
+              <span class="course__rate">体重×1.0g/日</span>
+            </span>
+          </label>
+          <label class="course">
+            <input type="radio" name="course" value="diet">
+            <span class="course__body">
+              <span class="course__icon" aria-hidden="true">🔥</span>
+              <span class="course__name">ダイエット</span>
+              <span class="course__rate">体重×1.5g/日</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="field field--small">
+          <label class="field__label" for="weight">体重</label>
+          <div class="field__control">
+            <input id="weight" name="weight" class="field__input" type="text"
+                   inputmode="decimal" autocomplete="off" placeholder="65"
+                   aria-describedby="weight-error course-hint">
+            <span class="field__unit">kg</span>
+          </div>
+          <p id="weight-error" class="field-error" aria-live="polite"></p>
+        </div>
+        <p id="course-hint" class="hint">コースを選んで体重を入力すると、1食分の目標量を自動でセットします</p>
+      </fieldset>
+
+      <div class="step">
+        <div class="field">
+          <label class="field__label step__title" for="target">
+            <span class="step__num">2</span>目標たんぱく質量
+            <span class="tag tag--required">必須</span>
+          </label>
+          <div class="field__control">
+            <input id="target" name="target" class="field__input field__input--large" type="text"
+                   inputmode="decimal" autocomplete="off" placeholder="30"
+                   aria-describedby="target-error" required>
+            <span class="field__unit">g</span>
+          </div>
+          <p id="target-error" class="field-error" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="field">
+          <label class="field__label step__title" for="budget">
+            <span class="step__num">3</span>予算
+            <span class="tag tag--required">必須</span>
+          </label>
+          <div class="field__control">
+            <input id="budget" name="budget" class="field__input field__input--large" type="text"
+                   inputmode="numeric" autocomplete="off" placeholder="600"
+                   aria-describedby="budget-error" required>
+            <span class="field__unit">円</span>
+          </div>
+          <p id="budget-error" class="field-error" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <label class="toggle">
+        <input id="allow-dup" name="allowDup" type="checkbox" class="toggle__input">
+        <span class="toggle__box" aria-hidden="true"></span>
+        <span class="toggle__text">
+          <strong>重複OK</strong>
+          <small>同じ商品を最大3個まで入れてもよい</small>
+        </span>
+      </label>
+
+      <button id="gacha-btn" type="submit" class="gacha-btn" disabled>
+        <span class="gacha-btn__icon" aria-hidden="true">🎰</span>
+        <span id="gacha-btn-label">ガチャを回す！</span>
+      </button>
+    </form>
+
+    <section id="reel" class="reel" hidden aria-live="off">
+      <div class="reel__machine">
+        <div class="reel__lamp" aria-hidden="true"></div>
+        <div class="reel__window">
+          <span id="reel-icon" class="reel__icon" aria-hidden="true">🛒</span>
+          <span id="reel-name" class="reel__name">抽選中…</span>
+          <span id="reel-protein" class="reel__protein">たんぱく質 --.-g</span>
+        </div>
+        <p class="reel__skip">タップでスキップ</p>
+      </div>
+    </section>
+
+    <section id="message" class="alert alert--warn" role="alert" hidden></section>
+
+    <section id="result" class="result" hidden aria-labelledby="result-title">
+      <h2 id="result-title" class="result__title">🎉 当たり！今回のセット</h2>
+
+      <div class="totals">
+        <div class="totals__item totals__item--protein">
+          <span class="totals__label">合計たんぱく質</span>
+          <span class="totals__value"><span id="total-protein">0.0</span><small>g</small></span>
+        </div>
+        <div class="totals__item totals__item--price">
+          <span class="totals__label">合計金額</span>
+          <span class="totals__value"><span id="total-price">0</span><small>円</small></span>
+        </div>
+      </div>
+      <p class="totals__sub">
+        <span id="over-target" class="pill pill--success"></span>
+        <span id="budget-left" class="pill"></span>
+      </p>
+
+      <ul id="result-list" class="card-list"></ul>
+
+      <button id="retry-btn" type="button" class="retry-btn">🔁 もう一回引く</button>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>※ 価格・たんぱく質量はサンプルデータです。実際の商品とは異なります。</p>
+  </footer>
+
+  <div id="confetti" class="confetti" aria-hidden="true"></div>
+</body>
+</html>
