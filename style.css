@@ -474,6 +474,33 @@ body {
   animation: flick 0.12s ease-out;
 }
 
+/*
+ * 【意図】先に止まった商品を窓の下に並べて残し、「何品目まで確定したか」を見せる
+ */
+.reel__locked {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reel__locked:empty {
+  display: none;
+}
+
+.reel__chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--c-text);
+  font-size: 0.85rem;
+  font-weight: 800;
+  animation: flick 0.2s ease-out;
+}
+
 .reel__skip {
   margin: 10px 0 0;
   color: var(--c-text);

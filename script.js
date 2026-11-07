@@ -76,6 +76,8 @@
 
   const SPIN_MS = 1600;
   const SPIN_MS_REDUCED = 300;
+  const SPIN_STAGE_MS = 500;
+  const SPIN_LOCK_HOLD_MS = 250;
   const SPIN_HOLD_MS = 450;
   const CONFETTI_COLORS = ['#ff4f81', '#ffc531', '#2fc6a5', '#4aa8ff', '#a66bff'];
 
@@ -119,6 +121,7 @@
     reelIcon: document.getElementById('reel-icon'),
     reelName: document.getElementById('reel-name'),
     reelProtein: document.getElementById('reel-protein'),
+    reelLocked: document.getElementById('reel-locked'),
     message: document.getElementById('message'),
     loadError: document.getElementById('load-error'),
     result: document.getElementById('result'),
@@ -613,15 +616,29 @@
   /**
    * 商品名がパラパラ切り替わるスロット演出を再生する。
    *
-   * 【意図】切り替え間隔を徐々に伸ばして「止まりそうで止まらない」減速感を出し、期待感を高める
+   * 品数ぶんの段階（stage）に分け、手前の品から順に止めて確定させ、最後の 1 品だけ長く減速して止める。
+   *
+   * 【意図】切り替え間隔を徐々に伸ばして「止まりそうで止まらない」減速感を出し、期待感を高める。
+   *         止まった絵は実際の結果と同じにして、直前の絵と結果が食い違わないようにする
+   * 【制約】stops は表示順の逆（最後 = 結果の先頭カード）で受け取る。最後に止まるのが一番目立つ商品になる
    * 【注意】抽選結果は演出前に確定済み。演出は見た目だけなので、タップで即スキップできるようにして操作を妨げない
+   *
+   * @param {Array<{product: Object, count: number}>} stops 止める商品。空なら止めずに終える
    */
-  function playSpin(finalProduct) {
+  function playSpin(stops) {
     return new Promise((resolve) => {
-      const total = reduceMotion.matches ? SPIN_MS_REDUCED : SPIN_MS;
-      const start = performance.now();
+      const reduced = reduceMotion.matches;
+      let stage = 0;
+      let stageStart = 0;
+      let stageMs = 0;
       let timer = 0;
       let finished = false;
+
+      const restartFlick = () => {
+        el.reel.classList.remove('is-spinning');
+        void el.reel.offsetWidth;
+        el.reel.classList.add('is-spinning');
+      };
 
       const finish = () => {
         if (finished) {
@@ -632,52 +649,67 @@
         el.reel.removeEventListener('click', finish);
         el.reel.classList.remove('is-spinning');
         el.reel.hidden = true;
+        el.reelLocked.replaceChildren();
         resolve();
       };
 
-      /*
-       * 【意図】最後の 1 コマを実際の結果の商品にして少し止める。
-       *         直前に映った絵と結果が食い違うと「ただの演出」に見えてしまい、スロットらしさが失われる
-       * 【注意】止めている間もタップで finish できる。その場合は結果画面へ即移る
-       */
-      const showFinalFrame = () => {
-        if (!finalProduct) {
-          finish();
+      const lockChip = ({ product, count }) => {
+        const li = document.createElement('li');
+        li.className = 'reel__chip';
+        li.textContent = `${emojiOf(product)} ${product.name}${count > 1 ? ` ×${count}` : ''}`;
+        el.reelLocked.append(li);
+      };
+
+      const showStop = ({ product }) => {
+        el.reelIcon.textContent = emojiOf(product);
+        el.reelName.textContent = product.name;
+        el.reelProtein.textContent = `たんぱく質 ${formatGram(product.protein)}g`;
+        restartFlick();
+      };
+
+      const startStage = () => {
+        stageStart = performance.now();
+        stageMs = reduced ? SPIN_MS_REDUCED : stage === stops.length - 1 ? SPIN_MS : SPIN_STAGE_MS;
+        tick();
+      };
+
+      const stopStage = () => {
+        const stop = stops[stage];
+        showStop(stop);
+        if (stage === stops.length - 1) {
+          timer = setTimeout(finish, reduced ? 0 : SPIN_HOLD_MS);
           return;
         }
-        el.reelIcon.textContent = emojiOf(finalProduct);
-        el.reelName.textContent = finalProduct.name;
-        el.reelProtein.textContent = `たんぱく質 ${formatGram(finalProduct.protein)}g`;
-        el.reel.classList.remove('is-spinning');
-        void el.reel.offsetWidth;
-        el.reel.classList.add('is-spinning');
-        timer = setTimeout(finish, reduceMotion.matches ? 0 : SPIN_HOLD_MS);
+        lockChip(stop);
+        stage += 1;
+        timer = setTimeout(startStage, reduced ? 0 : SPIN_LOCK_HOLD_MS);
       };
 
       const tick = () => {
-        const elapsed = performance.now() - start;
-        if (elapsed >= total) {
-          showFinalFrame();
+        const elapsed = performance.now() - stageStart;
+        if (elapsed >= stageMs) {
+          stopStage();
           return;
         }
         const product = products[Math.floor(Math.random() * products.length)];
         el.reelIcon.textContent = emojiOf(product);
         el.reelName.textContent = product.name;
         el.reelProtein.textContent = `たんぱく質 ${formatGram(Math.random() * 99)}g`;
+        restartFlick();
 
-        /* 【意図】再描画のたびに切り替えアニメーションを最初から流し直す */
-        el.reel.classList.remove('is-spinning');
-        void el.reel.offsetWidth;
-        el.reel.classList.add('is-spinning');
-
-        const progress = elapsed / total;
+        const progress = elapsed / stageMs;
         timer = setTimeout(tick, 45 + progress * progress * 260);
       };
 
+      el.reelLocked.replaceChildren();
       el.reel.hidden = false;
       el.reel.addEventListener('click', finish);
-      el.reel.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
-      tick();
+      el.reel.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+      if (stops.length === 0) {
+        finish();
+        return;
+      }
+      startStage();
     });
   }
 
@@ -713,8 +745,8 @@
     setBusy(true);
     el.result.hidden = true;
     el.message.hidden = true;
-    /* 【意図】買える商品がない場合は止める絵がないので null を渡し、止めずに終える。カードの先頭（たんぱく質が最も多い商品）を最後のコマに合わせる */
-    await playSpin(outcome.ok ? groupItems(outcome.items)[0].product : null);
+    /* 【意図】カードは先頭ほど目立つので、先頭を最後に止める。買える商品がない場合は空配列で止めずに終える */
+    await playSpin(outcome.ok ? groupItems(outcome.items).reverse() : []);
     setBusy(false);
 
     if (outcome.ok) {
