@@ -76,8 +76,9 @@
 
   const SPIN_MS = 1600;
   const SPIN_MS_REDUCED = 300;
-  const SPIN_STAGE_MS = 500;
-  const SPIN_LOCK_HOLD_MS = 250;
+  const SPIN_FIRST_STOP_MS = 800;
+  const SPIN_STEP_MS = 450;
+  const SPIN_LAST_GAP_MS = 900;
   const SPIN_HOLD_MS = 450;
   const CONFETTI_COLORS = ['#ff4f81', '#ffc531', '#2fc6a5', '#4aa8ff', '#a66bff'];
 
@@ -118,9 +119,7 @@
     gachaBtn: document.getElementById('gacha-btn'),
     gachaBtnLabel: document.getElementById('gacha-btn-label'),
     reel: document.getElementById('reel'),
-    reelIcon: document.getElementById('reel-icon'),
-    reelName: document.getElementById('reel-name'),
-    reelProtein: document.getElementById('reel-protein'),
+    reelWindows: document.getElementById('reel-windows'),
     reelLocked: document.getElementById('reel-locked'),
     message: document.getElementById('message'),
     loadError: document.getElementById('load-error'),
@@ -614,13 +613,12 @@
   /* ==================== 抽選演出 ==================== */
 
   /**
-   * 商品名がパラパラ切り替わるスロット演出を再生する。
+   * 品数ぶんのリールを横に並べて同時に回し、左から順に止めるスロット演出を再生する。
    *
-   * 品数ぶんの段階（stage）に分け、手前の品から順に止めて確定させ、最後の 1 品だけ長く減速して止める。
-   *
-   * 【意図】切り替え間隔を徐々に伸ばして「止まりそうで止まらない」減速感を出し、期待感を高める。
+   * 【意図】全リールが同時に回って 1 つずつ確定していく形にすると、「あと何個残っているか」が見え、
+   *         本物のスロットのような期待感が出る。最後のリールだけ長く減速させて山場にする。
    *         止まった絵は実際の結果と同じにして、直前の絵と結果が食い違わないようにする
-   * 【制約】stops は表示順の逆（最後 = 結果の先頭カード）で受け取る。最後に止まるのが一番目立つ商品になる
+   * 【制約】stops は表示順（左から）で受け取る。最後（右端）は結果の先頭カード＝最も目立つ商品にする
    * 【注意】抽選結果は演出前に確定済み。演出は見た目だけなので、タップで即スキップできるようにして操作を妨げない
    *
    * @param {Array<{product: Object, count: number}>} stops 止める商品。空なら止めずに終える
@@ -628,16 +626,37 @@
   function playSpin(stops) {
     return new Promise((resolve) => {
       const reduced = reduceMotion.matches;
-      let stage = 0;
-      let stageStart = 0;
-      let stageMs = 0;
-      let timer = 0;
+      const last = stops.length - 1;
       let finished = false;
+      let endTimer = 0;
 
-      const restartFlick = () => {
-        el.reel.classList.remove('is-spinning');
-        void el.reel.offsetWidth;
-        el.reel.classList.add('is-spinning');
+      /*
+       * 【意図】止まる時刻を左から等間隔でずらし、最後だけは直前から十分あけて長く減速させる
+       */
+      const stopAt = stops.map((_, i) => {
+        if (reduced) {
+          return SPIN_MS_REDUCED;
+        }
+        return i === last ? Math.max(SPIN_MS, SPIN_FIRST_STOP_MS + (i - 1) * SPIN_STEP_MS + SPIN_LAST_GAP_MS) : SPIN_FIRST_STOP_MS + i * SPIN_STEP_MS;
+      });
+
+      const reels = stops.map(() => {
+        const win = document.createElement('div');
+        win.className = 'reel__window';
+        const icon = document.createElement('span');
+        icon.className = 'reel__icon';
+        const name = document.createElement('span');
+        name.className = 'reel__name';
+        const protein = document.createElement('span');
+        protein.className = 'reel__protein';
+        win.append(icon, name, protein);
+        return { win, icon, name, protein, timer: 0 };
+      });
+
+      const flick = (reel) => {
+        reel.win.classList.remove('is-flick');
+        void reel.win.offsetWidth;
+        reel.win.classList.add('is-flick');
       };
 
       const finish = () => {
@@ -645,10 +664,11 @@
           return;
         }
         finished = true;
-        clearTimeout(timer);
+        clearTimeout(endTimer);
+        reels.forEach((reel) => clearTimeout(reel.timer));
         el.reel.removeEventListener('click', finish);
-        el.reel.classList.remove('is-spinning');
         el.reel.hidden = true;
+        el.reelWindows.replaceChildren();
         el.reelLocked.replaceChildren();
         resolve();
       };
@@ -660,48 +680,40 @@
         el.reelLocked.append(li);
       };
 
-      const showStop = ({ product }) => {
-        el.reelIcon.textContent = emojiOf(product);
-        el.reelName.textContent = product.name;
-        el.reelProtein.textContent = `たんぱく質 ${formatGram(product.protein)}g`;
-        restartFlick();
-      };
-
-      const startStage = () => {
-        stageStart = performance.now();
-        stageMs = reduced ? SPIN_MS_REDUCED : stage === stops.length - 1 ? SPIN_MS : SPIN_STAGE_MS;
-        tick();
-      };
-
-      const stopStage = () => {
-        const stop = stops[stage];
-        showStop(stop);
-        if (stage === stops.length - 1) {
-          timer = setTimeout(finish, reduced ? 0 : SPIN_HOLD_MS);
-          return;
+      const stopReel = (i) => {
+        const { product, count } = stops[i];
+        const reel = reels[i];
+        reel.icon.textContent = emojiOf(product);
+        reel.name.textContent = count > 1 ? `${product.name} ×${count}` : product.name;
+        reel.protein.textContent = `${formatGram(product.protein)}g`;
+        reel.win.classList.add('is-stopped');
+        flick(reel);
+        lockChip(stops[i]);
+        if (i === last) {
+          endTimer = setTimeout(finish, reduced ? 0 : SPIN_HOLD_MS);
         }
-        lockChip(stop);
-        stage += 1;
-        timer = setTimeout(startStage, reduced ? 0 : SPIN_LOCK_HOLD_MS);
       };
 
-      const tick = () => {
-        const elapsed = performance.now() - stageStart;
-        if (elapsed >= stageMs) {
-          stopStage();
+      const spinReel = (i, startedAt) => {
+        const reel = reels[i];
+        const elapsed = performance.now() - startedAt;
+        if (elapsed >= stopAt[i]) {
+          stopReel(i);
           return;
         }
         const product = products[Math.floor(Math.random() * products.length)];
-        el.reelIcon.textContent = emojiOf(product);
-        el.reelName.textContent = product.name;
-        el.reelProtein.textContent = `たんぱく質 ${formatGram(Math.random() * 99)}g`;
-        restartFlick();
+        reel.icon.textContent = emojiOf(product);
+        reel.name.textContent = product.name;
+        reel.protein.textContent = `${formatGram(Math.random() * 99)}g`;
+        flick(reel);
 
-        const progress = elapsed / stageMs;
-        timer = setTimeout(tick, 45 + progress * progress * 260);
+        const progress = elapsed / stopAt[i];
+        reel.timer = setTimeout(() => spinReel(i, startedAt), 45 + progress * progress * 260);
       };
 
       el.reelLocked.replaceChildren();
+      el.reelWindows.replaceChildren(...reels.map((reel) => reel.win));
+      el.reelWindows.dataset.count = String(stops.length);
       el.reel.hidden = false;
       el.reel.addEventListener('click', finish);
       el.reel.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
@@ -709,7 +721,8 @@
         finish();
         return;
       }
-      startStage();
+      const startedAt = performance.now();
+      stops.forEach((_, i) => spinReel(i, startedAt));
     });
   }
 

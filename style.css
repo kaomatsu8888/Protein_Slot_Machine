@@ -441,36 +441,82 @@ body {
   animation: lamp 0.4s linear infinite;
 }
 
+/*
+ * 【意図】品数ぶんのリールを横一列に並べる。幅は等分し、品数が多いほど文字を小さくして
+ *         スマホ幅（〜480px）でも横スクロールを出さずに収める
+ * 【注意】min-width: 0 がないと長い商品名で flex の子が縮まず、はみ出す
+ */
+.reel__windows {
+  display: flex;
+  gap: 6px;
+}
+
 .reel__window {
   display: flex;
+  flex: 1;
+  min-width: 0;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 18px 12px;
+  padding: 14px 4px;
   border: 4px solid var(--c-text);
   border-radius: var(--radius-m);
   background: #fff;
   overflow: hidden;
 }
 
+.reel__window.is-stopped {
+  border-color: var(--c-primary);
+  background: #fff8fb;
+}
+
 .reel__icon {
-  font-size: 3.2rem;
+  font-size: 2.4rem;
   line-height: 1.1;
 }
 
 .reel__name {
-  font-size: 1.2rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 0.85rem;
   font-weight: 900;
+  line-height: 1.3;
+  min-height: 3.9em;
+  overflow-wrap: anywhere;
 }
 
 .reel__protein {
   color: var(--c-primary);
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
-.reel.is-spinning .reel__window > * {
+.reel__windows[data-count="1"] .reel__icon {
+  font-size: 3.2rem;
+}
+
+.reel__windows[data-count="1"] .reel__name {
+  font-size: 1.2rem;
+  min-height: 0;
+}
+
+.reel__windows[data-count="4"] .reel__icon,
+.reel__windows[data-count="5"] .reel__icon,
+.reel__windows[data-count="6"] .reel__icon {
+  font-size: 1.8rem;
+}
+
+.reel__windows[data-count="4"] .reel__name,
+.reel__windows[data-count="5"] .reel__name,
+.reel__windows[data-count="6"] .reel__name {
+  font-size: 0.7rem;
+}
+
+.reel__window.is-flick > * {
   animation: flick 0.12s ease-out;
 }
 
