@@ -253,6 +253,17 @@ body {
   font-size: 2rem;
 }
 
+/*
+ * 【意図】入力値は font-weight 800 の濃い文字なので、プレースホルダーが同じ見た目だと
+ *         「入力済み」に見えてしまう。色を薄く・細くして、例示であることを一目で区別させる
+ * 【注意】opacity はブラウザごとに初期値が違う（Firefox は 0.54）ため明示して揃える
+ */
+.field__input::placeholder {
+  color: #b9b0cc;
+  font-weight: 400;
+  opacity: 1;
+}
+
 .field__input:focus {
   outline: none;
   border-color: var(--c-sky);
