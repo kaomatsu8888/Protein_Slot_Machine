@@ -418,7 +418,8 @@
   /**
    * 条件に合うセットを 1 つ抽選する。
    *
-   * @returns {{ok: true, items: Array}|{ok: false, reason: string, cheapest?: number, maxProtein10?: number}}
+   * @returns {{ok: true, items: Array, partial?: boolean}|{ok: false, reason: string, cheapest?: number}}
+   *          partial は「目標には届かないが、予算内の最大量のセット」であることを表す
    */
   function drawSet(list, targetG, budget, allowDup) {
     const target10 = Math.round(targetG * 10);
@@ -435,11 +436,14 @@
       }
     }
 
-    const best = solveMaxProtein(pool, budget);
-    if (best.protein10 >= target10) {
-      return { ok: true, items: best.items };
-    }
-    return { ok: false, reason: 'TARGET_UNREACHABLE', maxProtein10: best.protein10 };
+    /*
+     * 【意図】目標に届かない場合も、予算内で最大のたんぱく質を取れる組み合わせを結果として返す。
+     *         母集団をシャッフルしてから解くと、最大量が同じ組み合わせが複数あるとき
+     *         経路復元の結果が変わり、「もう一回引く」で違うセットが出る
+     * 【注意】最大量のセットを厳密に均等抽選しているわけではない（偏りはありうる）
+     */
+    const best = solveMaxProtein(shuffle(pool), budget);
+    return { ok: true, items: best.items, partial: best.protein10 < target10 };
   }
 
   /* ==================== 表示 ==================== */
@@ -553,14 +557,19 @@
     setTimeout(() => pieces.forEach((p) => p.remove()), 1900);
   }
 
-  function renderResult(items, target10, budget) {
+  function renderResult(items, target10, budget, partial) {
     const groups = groupItems(items);
     const totalPrice = items.reduce((sum, item) => sum + item.product.price, 0);
     const totalProtein10 = items.reduce((sum, item) => sum + item.protein10, 0);
 
-    el.resultTitle.textContent = pickHypeLine();
+    if (partial) {
+      el.resultTitle.textContent = `😤 ${formatYen(budget)}円ではここまで！`;
+      el.overTarget.textContent = `目標 ${formatGram(target10 / 10)}g にはあと ${formatGram((target10 - totalProtein10) / 10)}g 届かず`;
+    } else {
+      el.resultTitle.textContent = pickHypeLine();
+      el.overTarget.textContent = `目標 ${formatGram(target10 / 10)}g 達成！（+${formatGram((totalProtein10 - target10) / 10)}g）`;
+    }
     el.resultList.replaceChildren(...groups.map(createCard));
-    el.overTarget.textContent = `目標 ${formatGram(target10 / 10)}g 達成！（+${formatGram((totalProtein10 - target10) / 10)}g）`;
     el.budgetLeft.textContent = `予算残り ${formatYen(budget - totalPrice)}円`;
 
     /* 【注意】同じ要素に同じアニメーションを再適用するには、クラスを外して再描画（reflow）させる必要がある */
@@ -571,35 +580,27 @@
 
     animateCount(el.totalProtein, totalProtein10 / 10, formatGram);
     animateCount(el.totalPrice, totalPrice, formatYen);
-    burstConfetti();
+    if (!partial) {
+      burstConfetti();
+    }
     el.result.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'start' });
   }
 
-  function renderFailure(outcome, target10, budget, allowDup) {
+  /**
+   * 予算内に買える商品が 1 つもない場合の表示。
+   *
+   * 【注意】目標に届かないだけの場合はここに来ない（予算内の最大量セットを renderResult で表示する）
+   */
+  function renderFailure(outcome) {
     const title = document.createElement('strong');
     title.className = 'alert__title';
+    title.textContent = '😢 予算内で買える商品がありません';
     const detail = document.createElement('p');
+    detail.textContent = `いちばん安い商品でも ${formatYen(outcome.cheapest)}円 です。`;
     const tips = document.createElement('ul');
-    const addTip = (text) => {
-      const li = document.createElement('li');
-      li.textContent = text;
-      tips.append(li);
-    };
-
-    if (outcome.reason === 'NO_AFFORDABLE') {
-      title.textContent = '😢 予算内で買える商品がありません';
-      detail.textContent = `いちばん安い商品でも ${formatYen(outcome.cheapest)}円 です。`;
-      addTip(`予算を ${formatYen(outcome.cheapest)}円 以上にしてみてください`);
-    } else {
-      title.textContent = '😢 条件に合う組み合わせが見つかりませんでした';
-      detail.textContent =
-        `予算 ${formatYen(budget)}円 で集められるたんぱく質は最大 ${formatGram(outcome.maxProtein10 / 10)}g です（目標 ${formatGram(target10 / 10)}g）。`;
-      addTip('予算を増やす');
-      addTip(`目標たんぱく質量を ${formatGram(outcome.maxProtein10 / 10)}g 以下にする`);
-      if (!allowDup) {
-        addTip('「重複OK」にチェックを入れる');
-      }
-    }
+    const li = document.createElement('li');
+    li.textContent = `予算を ${formatYen(outcome.cheapest)}円 以上にしてみてください`;
+    tips.append(li);
 
     el.message.replaceChildren(title, detail, tips);
     el.message.hidden = false;
@@ -696,9 +697,9 @@
     setBusy(false);
 
     if (outcome.ok) {
-      renderResult(outcome.items, target10, input.budget);
+      renderResult(outcome.items, target10, input.budget, outcome.partial);
     } else {
-      renderFailure(outcome, target10, input.budget, allowDup);
+      renderFailure(outcome);
     }
   }
 
