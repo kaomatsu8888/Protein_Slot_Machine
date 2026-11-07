@@ -76,6 +76,7 @@
 
   const SPIN_MS = 1600;
   const SPIN_MS_REDUCED = 300;
+  const SPIN_HOLD_MS = 450;
   const CONFETTI_COLORS = ['#ff4f81', '#ffc531', '#2fc6a5', '#4aa8ff', '#a66bff'];
 
   /**
@@ -615,7 +616,7 @@
    * 【意図】切り替え間隔を徐々に伸ばして「止まりそうで止まらない」減速感を出し、期待感を高める
    * 【注意】抽選結果は演出前に確定済み。演出は見た目だけなので、タップで即スキップできるようにして操作を妨げない
    */
-  function playSpin() {
+  function playSpin(finalProduct) {
     return new Promise((resolve) => {
       const total = reduceMotion.matches ? SPIN_MS_REDUCED : SPIN_MS;
       const start = performance.now();
@@ -634,10 +635,29 @@
         resolve();
       };
 
+      /*
+       * 【意図】最後の 1 コマを実際の結果の商品にして少し止める。
+       *         直前に映った絵と結果が食い違うと「ただの演出」に見えてしまい、スロットらしさが失われる
+       * 【注意】止めている間もタップで finish できる。その場合は結果画面へ即移る
+       */
+      const showFinalFrame = () => {
+        if (!finalProduct) {
+          finish();
+          return;
+        }
+        el.reelIcon.textContent = emojiOf(finalProduct);
+        el.reelName.textContent = finalProduct.name;
+        el.reelProtein.textContent = `たんぱく質 ${formatGram(finalProduct.protein)}g`;
+        el.reel.classList.remove('is-spinning');
+        void el.reel.offsetWidth;
+        el.reel.classList.add('is-spinning');
+        timer = setTimeout(finish, reduceMotion.matches ? 0 : SPIN_HOLD_MS);
+      };
+
       const tick = () => {
         const elapsed = performance.now() - start;
         if (elapsed >= total) {
-          finish();
+          showFinalFrame();
           return;
         }
         const product = products[Math.floor(Math.random() * products.length)];
@@ -693,7 +713,8 @@
     setBusy(true);
     el.result.hidden = true;
     el.message.hidden = true;
-    await playSpin();
+    /* 【意図】買える商品がない場合は止める絵がないので null を渡し、止めずに終える。カードの先頭（たんぱく質が最も多い商品）を最後のコマに合わせる */
+    await playSpin(outcome.ok ? groupItems(outcome.items)[0].product : null);
     setBusy(false);
 
     if (outcome.ok) {
